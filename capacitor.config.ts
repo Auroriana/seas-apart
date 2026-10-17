@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
-  appId: "com.seasapart.app", // Change before first build if you want a different package name. Must match Firebase.
+  appId: "com.ataraxia.seasapart", 
   appName: "Seas apart",
   webDir: "dist",
   plugins: {
