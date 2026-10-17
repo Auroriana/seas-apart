@@ -1,0 +1,55 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- helpers ----------
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc(uid) {
+      return get(/databases/$(database)/documents/users/$(uid));
+    }
+
+    // The coupleId stored on the caller's own user document (null if unpaired).
+    function myCoupleId() {
+      return userDoc(request.auth.uid).data.coupleId;
+    }
+
+    // ---------- users ----------
+    // Read: your own profile, and your partner's (same non-null coupleId).
+    // Write: never from the app. ensureUserProfile, pairCouple and unpairCouple (Admin SDK) do all writes,
+    // so nobody can pick their own shareCode or coupleId.
+    match /users/{uid} {
+      allow read: if signedIn() && (
+        request.auth.uid == uid ||
+        (resource.data.coupleId != null && resource.data.coupleId == myCoupleId())
+      );
+      allow write: if false;
+    }
+
+    // ---------- couples ----------
+    // Read: the two members. Create/delete: never from the app (pairCouple/unpairCouple only).
+    // Update: a member may change only nextMeetupDate, and only while the couple is active.
+    match /couples/{coupleId} {
+      allow read: if signedIn() && request.auth.uid in resource.data.memberIds;
+
+      allow create, delete: if false;
+
+      allow update: if signedIn()
+        && request.auth.uid in resource.data.memberIds
+        && resource.data.status == 'active'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nextMeetupDate'])
+        && (request.resource.data.nextMeetupDate == null || request.resource.data.nextMeetupDate is timestamp);
+
+      // Subcollections (dailyPrompts, answers, wallet, ...) have no rules yet, so they are denied.
+      // Each later phase adds its own match block here, always gated on membership of this couple.
+    }
+
+    // Everything else, including rateLimits, questions and activities: no client access.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
